@@ -756,6 +756,10 @@ class InferRequest:
                 )
             if infer_input._raw_data:
                 raw_inputs.append(infer_input._raw_data)
+                # Raw data from a gRPC request has no binary_data_size parameter,
+                # which the receiver needs to split the appended bytes.
+                parameters = infer_input_dict.setdefault("parameters", {})
+                parameters["binary_data_size"] = len(infer_input._raw_data)
             else:
                 infer_input_dict["data"] = infer_input.data
             infer_inputs.append(infer_input_dict)

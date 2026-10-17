@@ -413,6 +413,42 @@ class TestInferRequest:
         assert infer_request_dict["parameters"]["request_param1"] == "request_value1"
         assert infer_request_dict["inputs"][0]["parameters"]["param1"] == "value1"
 
+    def test_to_rest_from_grpc_raw_input_contents(self):
+        fp32_data = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        bytes_data = np.array([b"hello", b"world"], dtype=np.object_)
+        grpc_request = ModelInferRequest(
+            model_name="test_model",
+            inputs=[
+                {"name": "input-0", "shape": [2, 2], "datatype": "FP32"},
+                {
+                    "name": "input-1",
+                    "shape": [2],
+                    "datatype": "BYTES",
+                    "parameters": {"param1": InferParameter(string_param="value1")},
+                },
+            ],
+            raw_input_contents=[
+                fp32_data.tobytes(),
+                serialize_byte_tensor(bytes_data).item(),
+            ],
+        )
+        infer_request = InferRequest.from_grpc(grpc_request)
+
+        infer_request_bytes, json_length = infer_request.to_rest()
+        infer_request_dict = orjson.loads(infer_request_bytes[:json_length])
+        assert infer_request_dict["inputs"][0]["parameters"] == {"binary_data_size": 16}
+        assert infer_request_dict["inputs"][1]["parameters"] == {
+            "param1": "value1",
+            "binary_data_size": 18,
+        }
+
+        rest_request = InferRequest.from_bytes(
+            infer_request_bytes, json_length, "test_model"
+        )
+        np.testing.assert_array_equal(rest_request.inputs[0].as_numpy(), fp32_data)
+        # REST decodes BYTES inputs to str
+        assert rest_request.inputs[1].as_numpy().tolist() == ["hello", "world"]
+
     def test_infer_request_to_rest_missing_data_field(self):
         infer_input = InferInput(
             name="input1",
